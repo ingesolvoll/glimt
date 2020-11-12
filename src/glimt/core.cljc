@@ -1,7 +1,18 @@
 (ns glimt.core
-  (:require [statecharts.core :as fsm]
-            [statecharts.integrations.re-frame :as fsm.rf]
-            [re-frame.core :as f]))
+  (:require [malli.core :as m]
+            [malli.error :as me]
+            [re-frame.core :as f]
+            [statecharts.core :as fsm]
+            [statecharts.integrations.re-frame :as fsm.rf]))
+
+(def config-schema [:map
+                    [:id simple-keyword?]
+                    [:max-retries {:optional true} int?]
+                    [:on-success {:optional true} vector?]
+                    [:http-xhrio map?]])
+
+(defn fsm? [fsm]
+  (m/validate config-schema fsm))
 
 (defn update-retries [state & _]
   (update state :retries inc))
@@ -60,6 +71,8 @@
 
 (f/reg-fx ::start
   (fn [{:keys [id] :as config}]
+    (when-let [errors (me/humanize (m/explain config-schema config))]
+      (throw (ex-info "Bad HTTP config" {:errors errors})))
     (let [init-event       (ns-key id "init")
           transition-event (ns-key id "transition")
           config           (merge config {:init-event       init-event
