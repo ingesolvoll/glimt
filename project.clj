@@ -1,5 +1,5 @@
-(defproject glimt "0.1.0-SNAPSHOT"
-  :description "HTTP made easy"
+(defproject glimt "0.0.1-SNAPSHOT"
+  :description "re-frame HTTP FSM"
   :license {:name "Eclipse Public License"
             :url  "http://www.eclipse.org/legal/epl-v10.html"}
   :url "https://github.com/ingesolvoll/glimt"

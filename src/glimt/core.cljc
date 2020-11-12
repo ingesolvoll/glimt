@@ -36,7 +36,7 @@
                                                                                      :target ::loading}]}}}
                                            ::halted   {}}}
                       ::loaded  {}}
-       :integrations {:re-frame {:path             (f/path [:fsm id])
+       :integrations {:re-frame {:path             (f/path [::fsm-state id])
                                  :initialize-event init-event
                                  :transition-event transition-event}}})
 
@@ -58,7 +58,7 @@
                                         {:on-failure [::on-failure transition-event]
                                          :on-success [::on-success config]})}))
 
-(f/reg-fx ::http-fsm
+(f/reg-fx ::start
           (fn [{:keys [id] :as config}]
               (let [init-event (ns-key id "init")
                     transition-event (ns-key id "transition")
@@ -76,7 +76,11 @@
                     (let [init-event (ns-key id "init")]
                          {:dispatch [init-event]})))
 
-(f/reg-event-fx ::http-fsm
+(f/reg-event-fx ::start
                 ;; Starts the interceptor for the given fsm.
                 (fn [_ [_ fsm]]
-                    {::http-fsm fsm}))
+                    {::start fsm}))
+
+(f/reg-sub ::state
+  (fn [db [_ id]]
+    (get-in db [::fsm-state id])))
