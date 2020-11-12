@@ -5,10 +5,11 @@ HTTP FSM for re-frame
 
 ```clojure
 (def fsm {:id          :customer-loader
-          :http-xhrio  {:method          :get
+          :http-xhrio  {:uri             "http://example.com/customer/123"
+                        :method          :get
                         :response-format (ajax/json-response-format {:keywords? true})}
           :max-retries 5
-          :on-success  [::table-received id]})
+          :on-success  [::customer-received]})
 
 (rf/dispatch [:glimt.core/start fsm])
 
