@@ -1,5 +1,7 @@
 # glimt
-HTTP FSM for re-frame
+Wandering off the happy path
+
+Reduces boilerplate from your re-frame HTTP requests, while helping you handle errors and track the state of your request. Using an FSM makes dealing with errors and edge cases a breeze.
 
 # Usage
 
