@@ -5,6 +5,8 @@ Reduces boilerplate from your re-frame HTTP requests, while helping you handle e
 # Basic API usage
 
 ```clojure
+(require '[glimt.core :as http])
+
 ;; First we shape our HTTP request the way we want it.
 (def fsm {:id          :customer-loader
           :http-xhrio  {:uri             "http://example.com/customer/123"
@@ -14,10 +16,10 @@ Reduces boilerplate from your re-frame HTTP requests, while helping you handle e
           :on-success  [::customer-received]})
 
 ;; Then, when we are ready to start contacting the server
-(rf/dispatch [:glimt.core/start fsm])
+(rf/dispatch [::http/start fsm])
 
 ;; The FSM provides you with a simple data representation of where we are in the process
-(rf/subscribe [:glimt.core/state :customer-loader])
+(rf/subscribe [::http/state :customer-loader])
 
 ;; => {:_state :glimt.core/loading}
 
@@ -41,7 +43,7 @@ Reduces boilerplate from your re-frame HTTP requests, while helping you handle e
 
 # How to structure your views
 
-When the FSM handles all possible states, the UI code becomse a simple declaration of
+When the FSM handles all possible states, the UI code becomes a simple declaration of
 recipies for each state.
 
 ```clojure
