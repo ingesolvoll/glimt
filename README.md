@@ -2,6 +2,9 @@
 
 Reduces boilerplate from your re-frame HTTP requests, while helping you handle errors and track the state of your request. Using an FSM makes dealing with errors and edge cases a breeze.
 
+# Project status
+This library is not production ready. It needs work on validation, API and lots of other things before it makes sense to use it in real apps.
+
 # Basic API usage
 
 ```clojure
