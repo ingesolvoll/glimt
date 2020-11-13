@@ -48,17 +48,21 @@ to gather some feedback  soon to stabilize it.
 
 # FSM configuration
 
-`:id` Needs to be a simple, non-qualified keyword for now. That requirement will change
+**Everything is optional, unless specified otherwise.**
 
-`:http-xhrio` Request map passed to https://github.com/day8/re-frame-http-fx
+`:id` **Required** Needs to be a simple, non-qualified keyword for now. That requirement will change
+
+`:http-xhrio` **Required** Request map as defined by https://github.com/day8/re-frame-http-fx
 
 `:max-retries` Number of times the FSM will retry a failing request. Default 0.
 
-`:retry-delay` Number of milliseconds between each retry. Alternatively, you can pass in a function that accepts the current number of retries and returns a number of milliseconds.
+`:retry-delay` Number of milliseconds between each retry. Alternatively, you can pass in a function that accepts the current number of retries and returns a number of milliseconds. Default 2000.
 
 `:on-success` A re-frame event vector to dispatch to with the data from a successful response.
 
 `:path` An alternative to `on-success`, where the response data is inserted into the app DB under the given path.
+
+**You need to specity exactly one of `:on-success` and `:path`.**
 
 `:on-loading` Re-frame event vector to dispatch when request starts
 
@@ -81,7 +85,10 @@ Or by returning an effect from an event handler, like this:
 
 FSM state is exposed through re-frame subscriptions:
 
-`(rf/subscribe [::http/state fsm-id]) => [::http/loading]`
+```
+(rf/subscribe [::http/state fsm-id]) 
+     => [::http/loading]
+```
 
 ```
 (rf/subscribe [::http/state-full fsm-id]) 
