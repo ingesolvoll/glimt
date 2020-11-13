@@ -5,11 +5,19 @@
             [statecharts.core :as fsm]
             [statecharts.integrations.re-frame :as fsm.rf]))
 
-(def config-schema [:map
-                    [:id simple-keyword?]
-                    [:max-retries {:optional true} int?]
-                    [:on-success {:optional true} vector?]
-                    [:http-xhrio map?]])
+(def config-schema [:and
+                    [:fn {:error/message "Should contain either path or on-success, and not both"}
+                     (fn [{:keys [path on-success]}]
+                       (->> [path on-success]
+                            (filter identity)
+                            count
+                            (= 1)))]
+                    [:map
+                     [:id simple-keyword?]
+                     [:max-retries {:optional true} :int]
+                     [:on-success {:optional true} vector?]
+                     [:path {:optional true} vector?]
+                     [:http-xhrio :map]]])
 
 (defn fsm? [fsm]
   (m/validate config-schema fsm))
@@ -40,9 +48,10 @@
                                                    :entry   (fsm/assign reset-retries)
                                                    :states  {::loading {:entry [(fsm/assign update-retries)
                                                                                 #(f/dispatch [::load config])]
-                                                                        :on    {::error [{:guard  (partial more-retries? max-retries)
-                                                                                          :target ::waiting}
-                                                                                         [:> ::error ::halted]]}}
+                                                                        :on    {::error   [{:guard  (partial more-retries? max-retries)
+                                                                                            :target ::waiting}
+                                                                                           [:> ::error ::halted]]
+                                                                                ::success [:> ::loaded]}}
                                                              ::waiting {:after [{:delay  2000
                                                                                  :target ::loading}]}}}
                                        ::halted   {}}}
@@ -59,9 +68,12 @@
     {:dispatch [transition-event ::error error]}))
 
 (f/reg-event-fx ::on-success
-  (fn [_ [_ {:keys [transition-event on-success]} data]]
-    {:dispatch-n [[transition-event ::success]
-                  (conj on-success data)]}))
+  (fn [{db :db} [_ {:keys [transition-event on-success path]} data]]
+    (merge
+     (when path
+       {:db (assoc-in db path data)})
+     {:dispatch-n [[transition-event ::success]
+                   (when on-success (conj on-success data))]})))
 
 (f/reg-event-fx ::load
   (fn [_ [_ {:keys [transition-event http-xhrio] :as config}]]
@@ -71,8 +83,9 @@
 
 (f/reg-fx ::start
   (fn [{:keys [id] :as config}]
-    (when-let [errors (me/humanize (m/explain config-schema config))]
-      (throw (ex-info "Bad HTTP config" {:errors errors})))
+    (when-let [errors (m/explain config-schema config)]
+      (throw (ex-info "Bad HTTP config" {:humanized (me/humanize errors)
+                                         :data      errors})))
     (let [init-event       (ns-key id "init")
           transition-event (ns-key id "transition")
           config           (merge config {:init-event       init-event
