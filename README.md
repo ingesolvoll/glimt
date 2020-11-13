@@ -146,7 +146,7 @@ recipies for each state.
         body))))
 ```
 
-#Credits
+# Credits
 - https://github.com/lucywang000/clj-statecharts
 - https://github.com/day8/re-frame-http-fx
 - https://github.com/day8/re-frame-http-fx-alpha
