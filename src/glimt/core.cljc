@@ -17,8 +17,11 @@
                      [:id simple-keyword?]
                      [:max-retries {:optional true
                                     :default  0} :int]
-                     [:retry-delay {:optional true
-                                    :default  2000} :int]
+                     [:retry-delay {:optional      true
+                                    :default       2000}
+                      [:or
+                       [:fn {:error/message "Should be a function of the number of retries"} fn?]
+                       :int]]
                      [:on-success {:optional true} vector?]
                      [:path {:optional true} vector?]
                      [:http-xhrio :map]]])
@@ -39,30 +42,33 @@
   (assoc state :error (:data event)))
 
 (defn http-fsm [{:keys [id init-event transition-event max-retries retry-delay] :as config}]
-  {:id           id
-   :initial      ::loading
-   :states       {::loading {:entry #(f/dispatch [::load config])
-                             :on    {::error   ::error
-                                     ::success ::loaded}}
-                  ::error   {:initial (if (< 0 max-retries)
-                                        ::retrying
-                                        ::halted)
-                             :entry   (fsm/assign store-error)
-                             :states  {::retrying {:initial ::waiting
-                                                   :entry   (fsm/assign reset-retries)
-                                                   :states  {::loading {:entry [(fsm/assign update-retries)
-                                                                                #(f/dispatch [::load config])]
-                                                                        :on    {::error   [{:guard  (partial more-retries? max-retries)
-                                                                                            :target ::waiting}
-                                                                                           [:> ::error ::halted]]
-                                                                                ::success [:> ::loaded]}}
-                                                             ::waiting {:after [{:delay  retry-delay
-                                                                                 :target ::loading}]}}}
-                                       ::halted   {}}}
-                  ::loaded  {}}
-   :integrations {:re-frame {:path             (f/path [::fsm-state id])
-                             :initialize-event init-event
-                             :transition-event transition-event}}})
+  (let [retry-delay (if (fn? retry-delay)
+                      (comp retry-delay :retries)
+                      retry-delay)]
+    {:id           id
+     :initial      ::loading
+     :states       {::loading {:entry #(f/dispatch [::load config])
+                               :on    {::error   ::error
+                                       ::success ::loaded}}
+                    ::error   {:initial (if (< 0 max-retries)
+                                          ::retrying
+                                          ::halted)
+                               :entry   (fsm/assign store-error)
+                               :states  {::retrying {:initial ::waiting
+                                                     :entry   (fsm/assign reset-retries)
+                                                     :states  {::loading {:entry [(fsm/assign update-retries)
+                                                                                  #(f/dispatch [::load config])]
+                                                                          :on    {::error   [{:guard  (partial more-retries? max-retries)
+                                                                                              :target ::waiting}
+                                                                                             [:> ::error ::halted]]
+                                                                                  ::success [:> ::loaded]}}
+                                                               ::waiting {:after [{:delay  retry-delay
+                                                                                   :target ::loading}]}}}
+                                         ::halted   {}}}
+                    ::loaded  {}}
+     :integrations {:re-frame {:path             (f/path [::fsm-state id])
+                               :initialize-event init-event
+                               :transition-event transition-event}}}))
 
 (defn ns-key [id v]
   (keyword (name id) v))
