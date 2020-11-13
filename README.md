@@ -1,10 +1,18 @@
-# Wandering off the happy path
+# Request state machines for re-frame
+
+**Wandering off the happy path**
 
 Reduces boilerplate from your re-frame HTTP requests, while helping you handle errors and track the state of your request. Using an FSM makes dealing with errors and edge cases a breeze.
 
 # Project status
 Alpha. Works pretty well for my basic example. Breaking change likely in short term, hopefully I'll be able
-to gather some feedback  soon to stabilize it. 
+to gather some feedback  soon to stabilize it.
+
+[![Build Status](https://travis-ci.org/ingesolvoll/glimt.svg?branch=master)](https://travis-ci.org/ingesolvoll/glimt)
+
+[![Clojars Project](https://img.shields.io/clojars/v/glimt.svg)](https://clojars.org/glimt)
+
+ 
 # Basic API example
 
 ```clojure
@@ -62,7 +70,7 @@ to gather some feedback  soon to stabilize it.
 
 `:path` An alternative to `on-success`, where the response data is inserted into the app DB under the given path.
 
-**You need to specity exactly one of `:on-success` and `:path`.**
+**You need to specify either `:on-success` or `:path`. Not both.**
 
 `:on-loading` Re-frame event vector to dispatch when request starts
 
