@@ -66,7 +66,8 @@ to gather some feedback  soon to stabilize it.
 
 `:on-error` Re-frame event vector to dispatch when final failure state is reached
 
-#API
+# API
+
 Request FSM is started with either an event, like this:
 
 `(rf/dispatch [::http/start fsm-configuration])`
