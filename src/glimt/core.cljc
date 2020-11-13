@@ -1,6 +1,7 @@
 (ns glimt.core
   (:require [malli.core :as m]
             [malli.error :as me]
+            [malli.transform :as mt]
             [re-frame.core :as f]
             [statecharts.core :as fsm]
             [statecharts.integrations.re-frame :as fsm.rf]))
@@ -14,7 +15,10 @@
                             (= 1)))]
                     [:map
                      [:id simple-keyword?]
-                     [:max-retries {:optional true} :int]
+                     [:max-retries {:optional true
+                                    :default  0} :int]
+                     [:retry-delay {:optional true
+                                    :default  2000} :int]
                      [:on-success {:optional true} vector?]
                      [:path {:optional true} vector?]
                      [:http-xhrio :map]]])
@@ -34,7 +38,7 @@
 (defn store-error [state event]
   (assoc state :error (:data event)))
 
-(defn http-fsm [{:keys [id init-event transition-event max-retries] :as config}]
+(defn http-fsm [{:keys [id init-event transition-event max-retries retry-delay] :as config}]
   {:id           id
    :initial      ::loading
    :states       {::loading {:entry #(f/dispatch [::load config])
@@ -52,7 +56,7 @@
                                                                                             :target ::waiting}
                                                                                            [:> ::error ::halted]]
                                                                                 ::success [:> ::loaded]}}
-                                                             ::waiting {:after [{:delay  2000
+                                                             ::waiting {:after [{:delay  retry-delay
                                                                                  :target ::loading}]}}}
                                        ::halted   {}}}
                   ::loaded  {}}
@@ -87,11 +91,10 @@
       (throw (ex-info "Bad HTTP config" {:humanized (me/humanize errors)
                                          :data      errors})))
     (let [init-event       (ns-key id "init")
-          transition-event (ns-key id "transition")
-          config           (merge config {:init-event       init-event
-                                          :transition-event transition-event})]
-
-      (-> config
+          transition-event (ns-key id "transition")]
+      (-> (m/decode config-schema config mt/default-value-transformer)
+          (merge {:init-event       init-event
+                  :transition-event transition-event})
           http-fsm
           fsm/machine
           fsm.rf/integrate)
