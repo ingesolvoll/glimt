@@ -17,8 +17,8 @@
                      [:id simple-keyword?]
                      [:max-retries {:optional true
                                     :default  0} :int]
-                     [:retry-delay {:optional      true
-                                    :default       2000}
+                     [:retry-delay {:optional true
+                                    :default  2000}
                       [:or
                        [:fn {:error/message "Should be a function of the number of retries"} fn?]
                        :int]]
@@ -128,6 +128,15 @@
   (fn [_ [_ fsm]]
     {::start fsm}))
 
+(defn ->seq [x]
+  (if (seq? x)
+    x
+    [x]))
+
 (f/reg-sub ::state
+  (fn [db [_ id]]
+    (->seq (get-in db [::fsm-state id :_state]))))
+
+(f/reg-sub ::state-full
   (fn [db [_ id]]
     (get-in db [::fsm-state id])))
