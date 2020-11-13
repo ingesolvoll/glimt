@@ -23,6 +23,9 @@
                        [:fn {:error/message "Should be a function of the number of retries"} fn?]
                        :int]]
                      [:on-success {:optional true} vector?]
+                     [:on-loading {:optional true} vector?]
+                     [:on-error {:optional true} vector?]
+                     [:on-failure {:optional true} vector?]
                      [:path {:optional true} vector?]
                      [:http-xhrio :map]]])
 
@@ -41,19 +44,26 @@
 (defn store-error [state event]
   (assoc state :error (:data event)))
 
-(defn http-fsm [{:keys [id init-event transition-event max-retries retry-delay] :as config}]
+(defn http-fsm [{:keys [id init-event transition-event max-retries retry-delay on-loading on-error on-failure] :as config}]
   (let [retry-delay (if (fn? retry-delay)
                       (comp retry-delay :retries)
                       retry-delay)]
     {:id           id
      :initial      ::loading
-     :states       {::loading {:entry #(f/dispatch [::load config])
+     :states       {::loading {:entry (fn [state event]
+                                        (f/dispatch [::load config])
+                                        (when on-loading
+                                          (f/dispatch (vec (concat on-loading [state event transition-event])))))
                                :on    {::error   ::error
                                        ::success ::loaded}}
                     ::error   {:initial (if (< 0 max-retries)
                                           ::retrying
                                           ::halted)
-                               :entry   (fsm/assign store-error)
+                               :entry   (fn [state event]
+                                          (let [assign (fsm/assign store-error)]
+                                            (when on-error
+                                              (f/dispatch (vec (concat on-error [state event transition-event]))))
+                                            (assign state event)))
                                :states  {::retrying {:initial ::waiting
                                                      :entry   (fsm/assign reset-retries)
                                                      :states  {::loading {:entry [(fsm/assign update-retries)
@@ -64,7 +74,9 @@
                                                                                   ::success [:> ::loaded]}}
                                                                ::waiting {:after [{:delay  retry-delay
                                                                                    :target ::loading}]}}}
-                                         ::halted   {}}}
+                                         ::halted   {:entry (fn [state event]
+                                                              (when on-failure
+                                                                (f/dispatch (vec (concat on-failure [state event transition-event])))))}}}
                     ::loaded  {}}
      :integrations {:re-frame {:path             (f/path [::fsm-state id])
                                :initialize-event init-event
