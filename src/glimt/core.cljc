@@ -3,8 +3,8 @@
             [malli.error :as me]
             [malli.transform :as mt]
             [re-frame.core :as f]
-            [statecharts.core :as fsm]
-            [statecharts.integrations.re-frame :as fsm.rf]))
+            [statecharts.core :as sc]
+            [statecharts.integrations.re-frame :as sc.rf]))
 
 (def config-schema [:and
                     [:fn {:error/message "Should contain either path or on-success, and not both"}
@@ -60,13 +60,13 @@
                                           ::retrying
                                           ::halted)
                                :entry   (fn [state event]
-                                          (let [assign (fsm/assign store-error)]
+                                          (let [assign (sc/assign store-error)]
                                             (when on-error
                                               (f/dispatch (vec (concat on-error [state event transition-event]))))
                                             (assign state event)))
                                :states  {::retrying {:initial ::waiting
-                                                     :entry   (fsm/assign reset-retries)
-                                                     :states  {::loading {:entry [(fsm/assign update-retries)
+                                                     :entry   (sc/assign reset-retries)
+                                                     :states  {::loading {:entry [(sc/assign update-retries)
                                                                                   #(f/dispatch [::load config])]
                                                                           :on    {::error   [{:guard  (partial more-retries? max-retries)
                                                                                               :target ::waiting}
@@ -114,8 +114,8 @@
           (merge {:init-event       init-event
                   :transition-event transition-event})
           http-fsm
-          fsm/machine
-          fsm.rf/integrate)
+          sc/machine
+          sc.rf/integrate)
       (f/dispatch [init-event]))))
 
 (f/reg-event-fx ::restart
