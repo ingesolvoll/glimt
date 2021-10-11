@@ -4,7 +4,7 @@
 
 (def lib 'glimt/glimt)
 ;; if you want a version of MAJOR.MINOR.COMMITS:
-(def version "0.1-SNAPSHOT")
+(def version "0.1.0")
 
 (defn deploy [opts]
       (-> opts
