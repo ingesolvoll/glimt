@@ -8,8 +8,6 @@ Reduces boilerplate from your re-frame HTTP requests, while helping you handle e
 Alpha. Works pretty well for my basic example. Breaking change likely in short term, hopefully I'll be able
 to gather some feedback  soon to stabilize it.
 
-[![Build Status](https://travis-ci.org/ingesolvoll/glimt.svg?branch=master)](https://travis-ci.org/ingesolvoll/glimt)
-
 [![Clojars Project](https://img.shields.io/clojars/v/glimt.svg)](https://clojars.org/glimt)
 
  
