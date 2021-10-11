@@ -76,7 +76,7 @@ to gather some feedback  soon to stabilize it.
 
 `:on-error` Re-frame event vector to dispatch when an error occurs
 
-`:on-error` Re-frame event vector to dispatch when final failure state is reached
+`:on-failure` Re-frame event vector to dispatch when final failure state is reached
 
 # API
 
