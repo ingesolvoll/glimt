@@ -4,9 +4,8 @@
 
 Reduces boilerplate from your re-frame HTTP requests, while helping you handle errors and track the state of your request. Using an FSM makes dealing with errors and edge cases a breeze.
 
-# Project status
-Alpha. Works pretty well for my basic example. Breaking change likely in short term, hopefully I'll be able
-to gather some feedback  soon to stabilize it.
+# Project status (Oct 11th, 2021)
+Still early, expecting minor bugs and possibly some breaking APIs in the short term.
 
 [![Clojars Project](https://img.shields.io/clojars/v/glimt.svg)](https://clojars.org/glimt)
 
