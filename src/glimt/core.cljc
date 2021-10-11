@@ -129,7 +129,7 @@
     {::start fsm}))
 
 (defn ->seq [x]
-  (if (seq? x)
+  (if (coll? x)
     x
     [x]))
 
