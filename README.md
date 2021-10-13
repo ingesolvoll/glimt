@@ -13,6 +13,7 @@ Still early, expecting minor bugs and possibly some breaking APIs in the short t
 # Basic API example
 
 ```clojure
+(require '[re-frame.core :as rf])
 (require '[glimt.core :as http])
 
 ;; First we shape our HTTP request the way we want it.
