@@ -69,8 +69,8 @@
                                                                              #(f/dispatch [::load config])]
                                                                      :on    {::error   [{:guard  (partial more-retries? max-retries)
                                                                                          :target ::waiting}
-                                                                                        #p (or error-state (concat state-path [::error ::halted]))]
-                                                                             ::success (or success-state (concat state-path [::loaded]))}}
+                                                                                        (or error-state (vec (concat state-path [::error ::halted])))]
+                                                                             ::success (or success-state (vec (concat state-path [::loaded])))}}
                                                           ::waiting {:after [{:delay  retry-delay
                                                                               :target ::loading}]}}}
                                     ::halted   {:entry (fn [state event]
