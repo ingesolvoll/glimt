@@ -44,58 +44,63 @@
 (defn store-error [state event]
   (assoc state :error (:data event)))
 
-(defn http-fsm [{:keys [id init-event transition-event max-retries retry-delay on-loading on-error on-failure] :as config}]
+(defn http-fsm-embedded [{:keys [transition-event state-path max-retries retry-delay on-loading on-error on-failure error-state success-state] :as config}]
   (let [retry-delay (if (fn? retry-delay)
                       (comp retry-delay :retries)
                       retry-delay)]
-    {:id           id
-     :initial      ::loading
-     :states       {::loading {:entry (fn [state event]
-                                        (f/dispatch [::load config])
-                                        (when on-loading
-                                          (f/dispatch (vec (concat on-loading [state event transition-event])))))
-                               :on    {::error   ::error
-                                       ::success ::loaded}}
-                    ::error   {:initial (if (< 0 max-retries)
-                                          ::retrying
-                                          ::halted)
-                               :entry   (fn [state event]
-                                          (let [assign (sc/assign store-error)]
-                                            (when on-error
-                                              (f/dispatch (vec (concat on-error [state event transition-event]))))
-                                            (assign state event)))
-                               :states  {::retrying {:initial ::waiting
-                                                     :entry   (sc/assign reset-retries)
-                                                     :states  {::loading {:entry [(sc/assign update-retries)
-                                                                                  #(f/dispatch [::load config])]
-                                                                          :on    {::error   [{:guard  (partial more-retries? max-retries)
-                                                                                              :target ::waiting}
-                                                                                             [:> ::error ::halted]]
-                                                                                  ::success [:> ::loaded]}}
-                                                               ::waiting {:after [{:delay  retry-delay
-                                                                                   :target ::loading}]}}}
-                                         ::halted   {:entry (fn [state event]
-                                                              (when on-failure
-                                                                (f/dispatch (vec (concat on-failure [state event transition-event])))))}}}
-                    ::loaded  {}}
-     :integrations {:re-frame {:path             (f/path [::fsm-state id])
-                               :initialize-event init-event
-                               :transition-event transition-event}}}))
+    {:initial ::loading
+     :states  {::loading {:entry (fn [state event]
+                                   (f/dispatch [::load config])
+                                   (when on-loading
+                                     (f/dispatch (vec (concat on-loading [state event transition-event])))))
+                          :on    {::error   ::error
+                                  ::success (or success-state ::loaded)}}
+               ::error   {:initial ::retrying
+                          :entry   (fn [state event]
+                                     (let [assign (sc/assign store-error)]
+                                       (when on-error
+                                         (f/dispatch (vec (concat on-error [state event transition-event]))))
+                                       (assign state event)))
+                          :states  {::retrying {:always  [{:guard  (fn [] (< max-retries 1))
+                                                           :target (or error-state ::halted)}]
+                                                :initial ::waiting
+                                                :entry   (sc/assign reset-retries)
+                                                :states  {::loading {:entry [(sc/assign update-retries)
+                                                                             #(f/dispatch [::load config])]
+                                                                     :on    {::error   [{:guard  (partial more-retries? max-retries)
+                                                                                         :target ::waiting}
+                                                                                        #p (or error-state (concat state-path [::error ::halted]))]
+                                                                             ::success (or success-state (concat state-path [::loaded]))}}
+                                                          ::waiting {:after [{:delay  retry-delay
+                                                                              :target ::loading}]}}}
+                                    ::halted   {:entry (fn [state event]
+                                                         (when on-failure
+                                                           (f/dispatch (vec (concat on-failure [state event transition-event])))))}}}
+               ::loaded  {}}}))
+
+(defn http-fsm [{:keys [id init-event transition-event state-path] :as config}]
+  (let [config (cond-> config
+                 (not state-path) (assoc :state-path [:>]))]
+    (merge (http-fsm-embedded config)
+           {:id           id
+            :integrations {:re-frame {:path             (f/path [::fsm-state id])
+                                      :initialize-event init-event
+                                      :transition-event transition-event}}})))
 
 (defn ns-key [id v]
   (keyword (name id) v))
 
 (f/reg-event-fx ::on-failure
-  (fn [_ [_ transition-event error]]
-    {:dispatch [transition-event ::error error]}))
+                (fn [_ [_ transition-event error]]
+                  {:dispatch [transition-event ::error error]}))
 
 (f/reg-event-fx ::on-success
-  (fn [{db :db} [_ {:keys [transition-event on-success path]} data]]
-    (merge
-     (when path
-       {:db (assoc-in db path data)})
-     {:dispatch-n [[transition-event ::success]
-                   (when on-success (conj on-success data))]})))
+                (fn [{db :db} [_ {:keys [transition-event on-success path]} data]]
+                  (merge
+                   (when path
+                     {:db (assoc-in db path data)})
+                   {:dispatch-n [[transition-event ::success]
+                                 (when on-success (conj on-success data))]})))
 
 (f/reg-event-fx ::load
   (fn [_ [_ {:keys [transition-event http-xhrio] :as config}]]
@@ -110,9 +115,9 @@
                                          :data      errors})))
     (let [init-event       (ns-key id "init")
           transition-event (ns-key id "transition")]
-      (-> (m/decode config-schema config mt/default-value-transformer)
-          (merge {:init-event       init-event
-                  :transition-event transition-event})
+      (-> {:init-event       init-event
+           :transition-event transition-event}
+          (merge (m/decode config-schema config mt/default-value-transformer))
           http-fsm
           sc/machine
           sc.rf/integrate)
