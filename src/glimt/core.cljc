@@ -17,6 +17,8 @@
                      [:state-path {:optional true
                                    :default  [:>]}
                       [:vector :keyword]]
+                     [:error-state {:optional true} [:vector :keyword]]
+                     [:success-state {:optional true} [:vector :keyword]]
                      [:id simple-keyword?]
                      [:max-retries {:optional true
                                     :default  0} :int]
