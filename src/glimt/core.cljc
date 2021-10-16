@@ -14,6 +14,9 @@
                             count
                             (= 1)))]
                     [:map
+                     [:state-path {:optional true
+                                   :default  [:>]}
+                      [:vector :keyword]]
                      [:id simple-keyword?]
                      [:max-retries {:optional true
                                     :default  0} :int]
@@ -78,14 +81,12 @@
                                                            (f/dispatch (vec (concat on-failure [state event transition-event])))))}}}
                ::loaded  {}}}))
 
-(defn http-fsm [{:keys [id init-event transition-event state-path] :as config}]
-  (let [config (cond-> config
-                 (not state-path) (assoc :state-path [:>]))]
-    (merge (http-fsm-embedded config)
-           {:id           id
-            :integrations {:re-frame {:path             (f/path [::fsm-state id])
-                                      :initialize-event init-event
-                                      :transition-event transition-event}}})))
+(defn http-fsm [{:keys [id init-event transition-event] :as config}]
+  (merge (http-fsm-embedded config)
+         {:id           id
+          :integrations {:re-frame {:path             (f/path [::fsm-state id])
+                                    :initialize-event init-event
+                                    :transition-event transition-event}}}))
 
 (defn ns-key [id v]
   (keyword (name id) v))
