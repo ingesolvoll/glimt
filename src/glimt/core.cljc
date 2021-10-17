@@ -2,40 +2,56 @@
   (:require [malli.core :as m]
             [malli.error :as me]
             [malli.transform :as mt]
+            [malli.util :as mu]
             [re-frame.core :as f]
             [statecharts.core :as sc]
             [statecharts.integrations.re-frame :as sc.rf]))
 
-(def config-schema [:and
-                    [:fn {:error/message "Should contain either path or on-success, and not both"}
-                     (fn [{:keys [path on-success]}]
-                       (->> [path on-success]
-                            (filter identity)
-                            count
-                            (= 1)))]
-                    [:map
-                     [:state-path {:optional true
-                                   :default  [:>]}
-                      [:vector :keyword]]
-                     [:error-state {:optional true} [:vector :keyword]]
-                     [:success-state {:optional true} [:vector :keyword]]
-                     [:id simple-keyword?]
-                     [:max-retries {:optional true
-                                    :default  0} :int]
-                     [:retry-delay {:optional true
-                                    :default  2000}
-                      [:or
-                       [:fn {:error/message "Should be a function of the number of retries"} fn?]
-                       :int]]
-                     [:on-success {:optional true} vector?]
-                     [:on-loading {:optional true} vector?]
-                     [:on-error {:optional true} vector?]
-                     [:on-failure {:optional true} vector?]
-                     [:path {:optional true} vector?]
-                     [:http-xhrio :map]]])
+(def core-map-schema
+  [:map
+   [:transition-event {:optional true} :keyword]
+   [:state-path {:optional true
+                 :default  [:>]}
+    [:vector :keyword]]
+   [:error-state {:optional true} [:vector :keyword]]
+   [:success-state {:optional true} [:vector :keyword]]
+   [:id simple-keyword?]
+   [:max-retries {:optional true
+                  :default  0} :int]
+   [:retry-delay {:optional true
+                  :default  2000}
+    [:or
+     [:fn {:error/message "Should be a function of the number of retries"} fn?]
+     :int]]
+   [:on-success {:optional true} vector?]
+   [:on-loading {:optional true} vector?]
+   [:on-error {:optional true} vector?]
+   [:on-failure {:optional true} vector?]
+   [:path {:optional true} vector?]
+   [:http-xhrio :map]])
+
+(defn config-schema [map-schema]
+  [:and
+   [:fn {:error/message "Should contain either path or on-success, and not both"}
+    (fn [{:keys [path on-success]}]
+      (->> [path on-success]
+           (filter identity)
+           count
+           (= 1)))]
+   map-schema])
+
+(def embedded-config-schema (-> core-map-schema
+                                (mu/required-keys [:state-path :transition-event])
+                                (mu/dissoc :id)
+                                (config-schema)
+                                (m/schema)))
+
+(def full-config-schema (-> core-map-schema
+                            (config-schema)
+                            (m/schema)))
 
 (defn fsm? [fsm]
-  (m/validate config-schema fsm))
+  (m/validate full-config-schema fsm))
 
 (defn update-retries [state & _]
   (update state :retries inc))
@@ -50,6 +66,10 @@
   (assoc state :error (:data event)))
 
 (defn http-fsm-embedded [{:keys [transition-event state-path max-retries retry-delay on-loading on-error on-failure error-state success-state] :as config}]
+  (when-let [errors (m/explain embedded-config-schema config)]
+    (throw (ex-info "Invalid embedded HTTP FSM"
+                    {:humanized (me/humanize errors)
+                     :data      errors})))
   (let [retry-delay (if (fn? retry-delay)
                       (comp retry-delay :retries)
                       retry-delay)]
@@ -113,14 +133,15 @@
 
 (f/reg-fx ::start
   (fn [{:keys [id] :as config}]
-    (when-let [errors (m/explain config-schema config)]
-      (throw (ex-info "Bad HTTP config" {:humanized (me/humanize errors)
-                                         :data      errors})))
+    (when-let [errors (m/explain full-config-schema config)]
+      (throw (ex-info "Invalid HTTP FSM"
+                      {:humanized (me/humanize errors)
+                       :data      errors})))
     (let [init-event       (ns-key id "init")
           transition-event (ns-key id "transition")]
       (-> {:init-event       init-event
            :transition-event transition-event}
-          (merge (m/decode config-schema config mt/default-value-transformer))
+          (merge (m/decode full-config-schema config mt/default-value-transformer))
           http-fsm
           sc/machine
           sc.rf/integrate)
