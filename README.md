@@ -83,7 +83,7 @@ Request FSM is started with either an event, like this:
 `(rf/dispatch [::http/start fsm-configuration])`
 
 Or by returning an effect from an event handler, like this:
-```
+```clojure
 {:db          (assoc db :some :prop)
  :dispatch    [::some-dispatch]
  ::http/start fsm-configuration}
@@ -96,11 +96,42 @@ FSM state is exposed through re-frame subscriptions:
      => [::http/loading]
 ```
 
-```
+```clojure
 (rf/subscribe [::http/state-full fsm-id]) 
      => {:_state  [::http/error ::http/retrying ::http/waiting]
          :retries 1}
 ```
+
+You can also embed an HTTP FSM inside another FSM. Like this:
+
+```clojure
+{:id               :polling-fsm
+ :transition-event :transition-my-fsm
+ :initial          ::running
+ :states           {::running {:initial ::loading
+                               :states  {::waiting {:after [{:delay  10000
+                                                             :target ::loading}]}
+                                         ::loading (http/embedded-fsm
+                                                    {:transition-event :transition-my-fsm
+                                                     :http-xhrio       "url"
+                                                     :path             [:store :data :here]
+                                                     :state-path       [:> ::running ::loading]
+                                                     :success-state    [:> ::running ::waiting]})}}}}
+```
+
+In this context, we get a few more settings that need to be considered.
+
+`:transition-event`: **Required** The embedded machine needs access to the transition event of the container.
+
+`:state-path`: **Required** The path within the containing FSM where this embedded one resides. Needed for computing
+state transitions relative to the embedded machine.
+
+Also, we may want to transition to some arbitrary state when the HTTP FSM fails or succeeds:
+
+`:success-state`: Transition to this state when request succeeds
+
+`:failure-state`: Transition to this state when request fails.
+
 
 # Events for entering states
 `:on-loading`, `:on-error` and `:on-failure` are optional events that are called when entering the corresponding

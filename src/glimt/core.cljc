@@ -13,7 +13,7 @@
    [:state-path {:optional true
                  :default  [:>]}
     [:vector :keyword]]
-   [:error-state {:optional true} [:vector :keyword]]
+   [:failure-state {:optional true} [:vector :keyword]]
    [:success-state {:optional true} [:vector :keyword]]
    [:id simple-keyword?]
    [:max-retries {:optional true
@@ -65,7 +65,7 @@
 (defn store-error [state event]
   (assoc state :error (:data event)))
 
-(defn embedded-fsm [{:keys [transition-event state-path max-retries retry-delay on-loading on-error on-failure error-state success-state] :as config}]
+(defn embedded-fsm [{:keys [transition-event state-path max-retries retry-delay on-loading on-error on-failure failure-state success-state] :as config}]
   (when-let [errors (m/explain embedded-config-schema config)]
     (throw (ex-info "Invalid embedded HTTP FSM"
                     {:humanized (me/humanize errors)
@@ -87,14 +87,14 @@
                                          (f/dispatch (vec (concat on-error [state event transition-event]))))
                                        (assign state event)))
                           :states  {::retrying {:always  [{:guard  (fn [] (< max-retries 1))
-                                                           :target (or error-state ::halted)}]
+                                                           :target (or failure-state ::halted)}]
                                                 :initial ::waiting
                                                 :entry   (sc/assign reset-retries)
                                                 :states  {::loading {:entry [(sc/assign update-retries)
                                                                              #(f/dispatch [::load config])]
                                                                      :on    {::error   [{:guard  (partial more-retries? max-retries)
                                                                                          :target ::waiting}
-                                                                                        (or error-state (vec (concat state-path [::error ::halted])))]
+                                                                                        (or failure-state (vec (concat state-path [::error ::halted])))]
                                                                              ::success (or success-state (vec (concat state-path [::loaded])))}}
                                                           ::waiting {:after [{:delay  retry-delay
                                                                               :target ::loading}]}}}
