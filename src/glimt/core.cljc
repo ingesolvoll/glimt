@@ -65,7 +65,7 @@
 (defn store-error [state event]
   (assoc state :error (:data event)))
 
-(defn http-fsm-embedded [{:keys [transition-event state-path max-retries retry-delay on-loading on-error on-failure error-state success-state] :as config}]
+(defn embedded-fsm [{:keys [transition-event state-path max-retries retry-delay on-loading on-error on-failure error-state success-state] :as config}]
   (when-let [errors (m/explain embedded-config-schema config)]
     (throw (ex-info "Invalid embedded HTTP FSM"
                     {:humanized (me/humanize errors)
@@ -103,8 +103,8 @@
                                                            (f/dispatch (vec (concat on-failure [state event transition-event])))))}}}
                ::loaded  {}}}))
 
-(defn http-fsm [{:keys [id init-event transition-event] :as config}]
-  (merge (http-fsm-embedded config)
+(defn fsm [{:keys [id init-event transition-event] :as config}]
+  (merge (embedded-fsm config)
          {:id           id
           :integrations {:re-frame {:path             (f/path [::fsm-state id])
                                     :initialize-event init-event
@@ -142,7 +142,7 @@
       (-> {:init-event       init-event
            :transition-event transition-event}
           (merge (m/decode full-config-schema config mt/default-value-transformer))
-          http-fsm
+          fsm
           sc/machine
           sc.rf/integrate)
       (f/dispatch [init-event]))))
