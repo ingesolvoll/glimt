@@ -9,7 +9,7 @@
 
 (def core-map-schema
   [:map
-   [:transition-event {:optional true} :keyword]
+   [:transition-event {:optional true} :any]
    [:state-path {:optional true
                  :default  [:>]}
     [:vector :keyword]]
