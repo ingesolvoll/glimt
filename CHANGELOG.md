@@ -4,6 +4,11 @@
 
 ## Changed
 
+# 0.2.1 (2021-10-19)
+
+## Changed
+- Eased up some schemas. No breaking change.
+
 # 0.2.0 (2021-10-18)
 
 ## Added
