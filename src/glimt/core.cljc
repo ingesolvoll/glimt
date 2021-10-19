@@ -15,7 +15,7 @@
     [:vector :keyword]]
    [:failure-state {:optional true} [:vector :keyword]]
    [:success-state {:optional true} [:vector :keyword]]
-   [:id simple-keyword?]
+   [:id :keyword]
    [:max-retries {:optional true
                   :default  0} :int]
    [:retry-delay {:optional true
@@ -137,8 +137,8 @@
       (throw (ex-info "Invalid HTTP FSM"
                       {:humanized (me/humanize errors)
                        :data      errors})))
-    (let [init-event       (ns-key id "init")
-          transition-event (ns-key id "transition")]
+    (let [init-event       (keyword (str (when-let [ns (namespace id)] (str ns "-")) (name id) "-init"))
+          transition-event (keyword (str (when-let [ns (namespace id)] (str ns "-")) (name id) "-transition"))]
       (-> {:init-event       init-event
            :transition-event transition-event}
           (merge (m/decode full-config-schema config mt/default-value-transformer))

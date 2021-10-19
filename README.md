@@ -56,7 +56,7 @@ Still early, expecting minor bugs and possibly some breaking APIs in the short t
 
 **Everything is optional, unless specified otherwise.**
 
-`:id` **Required** Needs to be a simple, non-qualified keyword for now. That requirement will change
+`:id` **Required** The globally unique keyword identifying this FSM
 
 `:http-xhrio` **Required** Request map as defined by https://github.com/day8/re-frame-http-fx
 
