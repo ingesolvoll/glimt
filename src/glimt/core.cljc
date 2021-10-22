@@ -110,8 +110,21 @@
                                     :initialize-event init-event
                                     :transition-event transition-event}}}))
 
-(defn ns-key [id v]
-  (keyword (name id) v))
+(defn ns-key
+  "Returns a keyword generated from the `id`, with the `v` appended.
+
+  Preserves the namespace of the `id`, if any.
+
+  Useful for generating synthetic event names, scoped to a single FSM.
+
+  ```clojure
+  (ns-key :my-fsm \"init\")
+  ;; => :my-fsm.init
+  (ns-key :my-ns/my-fsm \"init\")
+  ;; => :my-ns/my-fsm.init
+  ```"
+  [id v]
+  (keyword (namespace id) (str (name id) "." v)))
 
 (f/reg-event-fx ::on-failure
                 (fn [_ [_ transition-event error]]
@@ -137,8 +150,8 @@
       (throw (ex-info "Invalid HTTP FSM"
                       {:humanized (me/humanize errors)
                        :data      errors})))
-    (let [init-event       (keyword (str (when-let [ns (namespace id)] (str ns "-")) (name id) "-init"))
-          transition-event (keyword (str (when-let [ns (namespace id)] (str ns "-")) (name id) "-transition"))]
+    (let [init-event       (ns-key id "init")
+          transition-event (ns-key id "transition")]
       (-> {:init-event       init-event
            :transition-event transition-event}
           (merge (m/decode full-config-schema config mt/default-value-transformer))
