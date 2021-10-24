@@ -28,18 +28,21 @@ Still early, expecting minor bugs and possibly some breaking APIs in the short t
 (rf/dispatch [::http/start fsm])
 
 ;; The FSM provides you with a simple data representation of where we are in the process
-(rf/subscribe [::http/state :customer-loader])
+(def state (rf/subscribe [::http/state :customer-loader]))
 
+@state
 ;; => [:glimt.core/loading]
 
-;; First request failed, trying again
+;; First request failed, because of transient error, trying again
+@state
 ;; => [:glimt.core/error :glimt.core/retrying :glimt.core/loading]
 
 ;; Request succeeded, machine reached it success end state
+@state
 ;; => [:glimt.core/loaded]
 
-(rf/subscribe [::http/state-full :customer-loader])
-;; After trying again 5 times, FSM reaches its failure end state
+;; Or, if after trying again 5 times, FSM reaches its failure end state
+@(rf/subscribe [::http/state-full :customer-loader])
 ;; => {:_state [:glimt.core/error :glimt.core/halted] 
 ;;     :error  {:uri             "/error"
 ;;              :last-method     "GET"
@@ -50,6 +53,12 @@ Still early, expecting minor bugs and possibly some breaking APIs in the short t
 ;;              :status-text     "Service Unavailable"
 ;;              :failure         :error
 ;;              :response        nil}]}
+
+;; At your leisure, remove FSM from app db
+(rf/dispatch [::http/discard :customer-loader])
+
+@state
+;; => nil
 ```
 
 # FSM configuration
