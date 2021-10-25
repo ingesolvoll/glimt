@@ -75,9 +75,7 @@
   (assoc state :error (:data event)))
 
 (defn- dispatch-callback [event-vector-name]
-  (fn [state event]
-    (when-let [event-vector (get-in state [:request event-vector-name])]
-      (f/dispatch (vec (concat event-vector [state event]))))))
+  (sc.rf/dispatch-callback [:request event-vector-name]))
 
 (defn dispatch-xhrio [state event]
   (sc.rf/call-fx {:http-xhrio (get-in state [:request :http-xhrio])}))
