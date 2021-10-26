@@ -100,6 +100,9 @@
 (defn dispatch-xhrio [{:keys [request]} _event]
   (sc.rf/call-fx (select-keys request [:http-xhrio])))
 
+(defn- dispatch-success [{:keys [request]} {:keys [data]}]
+  (f/dispatch (conj (:on-success request) data)))
+
 (defn embedded-fsm
   "Create an embedded machine as described by `config`. Will dispatch requests,
   retrying on error if so configured, and store progress on the app-db. See
@@ -110,25 +113,28 @@
    :states  {::loading {:entry [dispatch-xhrio
                                 (dispatch-callback :on-loading)]
                         :on    {::error   ::error
-                                ::success (or success-state ::loaded)}}
+                                ::success [{:actions dispatch-success
+                                            :target  (or success-state ::loaded)}]}}
              ::error   {:initial ::retrying
-                        :entry   [(sc/assign store-error)
-                                  (dispatch-callback :on-error)]
-                        :states  {::retrying {:always  [{:guard  (complement allow-retries?)
-                                                         :target (or failure-state ::halted)}]
+                        :entry   [(sc/assign store-error)]
+                        :states  {::retrying {:always  [{:guard   (complement allow-retries?)
+                                                         :target  (or failure-state ::halted)
+                                                         :actions (dispatch-callback :on-failure)}]
                                               :initial ::waiting
                                               :entry   (sc/assign reset-retries)
-                                              :states  {::waiting {:after [{:delay  retry-delay
+                                              :states  {::waiting {:entry (dispatch-callback :on-error)
+                                                                   :after [{:delay  retry-delay
                                                                             :target ::loading}]}
                                                         ::loading {:entry [(sc/assign update-retries)
                                                                            dispatch-xhrio]
                                                                    :on    {::error   [{:guard  more-retries?
                                                                                        :target ::waiting}
-                                                                                      (or failure-state (vec (concat state-path [::error ::halted])))]
-                                                                           ::success (or success-state (vec (concat state-path [::loaded])))}}}}
-                                  ::halted   {:entry (dispatch-callback :on-failure)}}}
-             ::loaded  {:entry (fn [{{:keys [on-success]} :request} {:keys [data]}]
-                                 (f/dispatch (conj on-success data)))}}})
+                                                                                      {:target  (or failure-state (vec (concat state-path [::error ::halted])))
+                                                                                       :actions (dispatch-callback :on-failure)}]
+                                                                           ::success [{:target (or success-state (vec (concat state-path [::loaded])))
+                                                                                       :actions dispatch-success}]}}}}
+                                  ::halted   {}}}
+             ::loaded  {}}})
 
 (defn fsm
   "Create a machine as described by `config`. Will dispatch requests, retrying
