@@ -8,32 +8,45 @@
             [statecharts.utils :as sc.utils]
             [statecharts.integrations.re-frame-multi :as sc.rf]))
 
-(def request-map-schema
-  (m/schema
-   [:and
-    [:map
-     [:fsm/id :keyword]
-     [:request/id vector?]
-     [:http-xhrio :map]
-     [:path {:optional true} vector?]
-     [:on-success {:optional true} vector?]
-     [:on-loading {:optional true} vector?]
-     [:on-error {:optional true} vector?]
-     [:on-failure {:optional true} vector?]]
-    [:fn {:error/message "Should contain either path or on-success, and not both"}
-     (fn [{:keys [path on-success]}]
-       (->> [path on-success]
-            (filter identity)
-            count
-            (= 1)))]]))
-
-(def core-fsm-schema-def
+(def request-schema-def
   [:map
+   [:fsm/id :keyword]
+   [:request/id vector?]
+   [:http-xhrio :map]
+
    [:max-retries {:default 0} :int]
    [:retry-delay {:default 2000}
     [:or
      [:fn {:error/message "Should be a function of the number of retries"} fn?]
      :int]]
+
+   [:path {:optional true} vector?]
+   [:on-success {:optional true} vector?]
+   [:on-loading {:optional true} vector?]
+   [:on-error {:optional true} vector?]
+   [:on-failure {:optional true} vector?]])
+
+(def on-success-schema-def
+  [:fn {:error/message "Should contain either path or on-success, and not both"}
+   (fn [{:keys [path on-success]}]
+     (->> [path on-success]
+          (filter identity)
+          count
+          (= 1)))])
+
+(defn with-on-success-schema [s]
+  [:and s on-success-schema-def])
+
+(def request-schema (-> request-schema-def
+                        with-on-success-schema
+                        m/schema))
+(def request-validation-schema (-> request-schema-def
+                                   (mu/optional-keys [:max-retries :retry-delay])
+                                   with-on-success-schema
+                                   m/schema))
+
+(def core-fsm-schema-def
+  [:map
    [:state-path {:default [:>]}
     [:vector :keyword]]])
 
@@ -43,7 +56,7 @@
    [:map
     [:id :keyword]]))
 
-(def fsm-validation-schema (mu/optional-keys fsm-schema [:max-retries :retry-delay :state-path]))
+(def fsm-validation-schema (mu/optional-keys fsm-schema [:state-path]))
 
 (def embedded-fsm-schema
   (mu/merge
@@ -62,14 +75,21 @@
 (defn fsm? [fsm]
   (m/validate fsm-validation-schema fsm))
 
-(defn update-retries [state & _]
-  (update state :retries inc))
+(defn allow-retries? [{:keys [request]} _event]
+  (>= (:max-retries request) 1))
 
-(defn reset-retries [state & _]
+(defn retry-delay [{:keys [request retries]} _event]
+  (let [{:keys [retry-delay]} request]
+    (retry-delay retries)))
+
+(defn reset-retries [state _event]
   (assoc state :retries 0))
 
-(defn more-retries? [max-retries {:keys [retries]} _]
-  (< retries max-retries))
+(defn update-retries [state _event]
+  (update state :retries inc))
+
+(defn more-retries? [{:keys [request retries]} _event]
+  (< retries (:max-retries request)))
 
 (defn store-error [state event]
   (assoc state :error (:data event)))
@@ -77,43 +97,38 @@
 (defn- dispatch-callback [event-vector-name]
   (sc.rf/dispatch-callback [:request event-vector-name]))
 
-(defn dispatch-xhrio [state event]
-  (sc.rf/call-fx {:http-xhrio (get-in state [:request :http-xhrio])}))
+(defn dispatch-xhrio [{:keys [request]} _event]
+  (sc.rf/call-fx (select-keys request [:http-xhrio])))
 
 (defn embedded-fsm
   "Create an embedded machine as described by `config`. Will dispatch requests,
   retrying on error if so configured, and store progress on the app-db. See
   `::state` for details on fetching the progress."
-  [{:keys [max-retries retry-delay
-           state-path failure-state success-state]
-    :as   config}]
+  [{:keys [state-path failure-state success-state] :as config}]
   (assert-schema embedded-fsm-schema config "Invalid embedded HTTP FSM")
-  (let [retry-delay (if (fn? retry-delay)
-                      (comp retry-delay :retries)
-                      retry-delay)]
-    {:initial ::loading
-     :states  {::loading {:entry [dispatch-xhrio
-                                  (dispatch-callback :on-loading)]
-                          :on    {::error   ::error
-                                  ::success (or success-state ::loaded)}}
-               ::error   {:initial ::retrying
-                          :entry   [(sc/assign store-error)
-                                    (dispatch-callback :on-error)]
-                          :states  {::retrying {:always  [{:guard  (fn [] (< max-retries 1))
-                                                           :target (or failure-state ::halted)}]
-                                                :initial ::waiting
-                                                :entry   (sc/assign reset-retries)
-                                                :states  {::waiting {:after [{:delay  retry-delay
-                                                                              :target ::loading}]}
-                                                          ::loading {:entry [(sc/assign update-retries)
-                                                                             dispatch-xhrio]
-                                                                     :on    {::error   [{:guard  (partial more-retries? max-retries)
-                                                                                         :target ::waiting}
-                                                                                        (or failure-state (vec (concat state-path [::error ::halted])))]
-                                                                             ::success (or success-state (vec (concat state-path [::loaded])))}}}}
-                                    ::halted {:entry (dispatch-callback :on-failure)}}}
-               ::loaded {:entry (fn [{{:keys [on-success]} :request} {:keys [data]}]
-                                  (f/dispatch (conj on-success data)))}}}))
+  {:initial ::loading
+   :states  {::loading {:entry [dispatch-xhrio
+                                (dispatch-callback :on-loading)]
+                        :on    {::error   ::error
+                                ::success (or success-state ::loaded)}}
+             ::error   {:initial ::retrying
+                        :entry   [(sc/assign store-error)
+                                  (dispatch-callback :on-error)]
+                        :states  {::retrying {:always  [{:guard  (complement allow-retries?)
+                                                         :target (or failure-state ::halted)}]
+                                              :initial ::waiting
+                                              :entry   (sc/assign reset-retries)
+                                              :states  {::waiting {:after [{:delay  retry-delay
+                                                                            :target ::loading}]}
+                                                        ::loading {:entry [(sc/assign update-retries)
+                                                                           dispatch-xhrio]
+                                                                   :on    {::error   [{:guard  more-retries?
+                                                                                       :target ::waiting}
+                                                                                      (or failure-state (vec (concat state-path [::error ::halted])))]
+                                                                           ::success (or success-state (vec (concat state-path [::loaded])))}}}}
+                                  ::halted   {:entry (dispatch-callback :on-failure)}}}
+             ::loaded  {:entry (fn [{{:keys [on-success]} :request} {:keys [data]}]
+                                 (f/dispatch (conj on-success data)))}}})
 
 (defn fsm
   "Create a machine as described by `config`. Will dispatch requests, retrying
@@ -152,9 +167,16 @@
 (f/reg-fx
  ::start
  (fn [request]
-   (assert-schema request-map-schema request "Invalid HTTP request")
+   (assert-schema request-validation-schema request "Invalid HTTP request")
    (let [transition-data (request-transition-data request)
-         request         (-> request
+         request         (-> (m/decode request-schema request mt/default-value-transformer)
+                             ;; retry-delay is a function (of how many retries have been
+                             ;; performed) or an int. Coerce it to be a function.
+                             (update :retry-delay
+                                     (fn [retry-delay]
+                                       (if (int? retry-delay)
+                                         (constantly retry-delay)
+                                         retry-delay)))
                              ;; we are guaranteed to have :path or :on-success
                              (update :on-success #(or % [::save-to-path (:path request)]))
                              (update :http-xhrio assoc
