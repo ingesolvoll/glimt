@@ -55,13 +55,6 @@
     [:failure-state {:optional true} [:vector :keyword]]
     [:success-state {:optional true} [:vector :keyword]]]))
 
-(defn- assert-schema [schema config message]
-  (when-let [errors (m/explain schema config)]
-    #_(prn ::throwing-schema (me/humanize errors))
-    (throw (ex-info message
-                    {:humanized (me/humanize errors)
-                     :data      errors}))))
-
 (defn allow-retries? [{:keys [request]} _event]
   (>= (:max-retries request) 1))
 
@@ -95,7 +88,10 @@
   retrying on error if so configured, and store progress on the app-db. See
   `::state` for details on fetching the progress."
   [{:keys [state-path failure-state success-state] :as config}]
-  (assert-schema embedded-fsm-schema config "Invalid embedded HTTP FSM")
+  (when-let [errors (m/explain embedded-fsm-schema config)]
+    (throw (ex-info "Invalid embedded HTTP FSM"
+                    {:humanized (me/humanize errors)
+                     :data      errors})))
   {:initial ::loading
    :states  {::loading {:entry [dispatch-xhrio
                                 (dispatch-callback :on-loading)]
@@ -125,11 +121,8 @@
 
 ;; Register the default FSM. If a request doesn't include an `:fsm-path`, this
 ;; FSM will be used.
-(let [machine (-> {:state-path [:>]}
-                  embedded-fsm
-                  (assoc :id ::fsm)
-                  sc/machine)]
-  (f/dispatch [::sc.rf/register default-fsm-path machine]))
+(let [machine (assoc (embedded-fsm {:state-path [:>]}) :id ::fsm)]
+  (f/dispatch [::sc.rf/register default-fsm-path (sc/machine machine)]))
 
 (defn request-state-path [request-id]
   (vec (concat [::requests] (sc.utils/ensure-vector request-id))))
@@ -141,28 +134,30 @@
 ;; Helper for requests that specify a `:path` instead of an `:on-success`.
 (f/reg-event-db ::save-to-path (fn [db [_ path data]] (assoc-in db path data)))
 
-(f/reg-fx
- ::start
- (fn [request]
-   (assert-schema request-validation-schema request "Invalid HTTP request")
-   (let [transition-data (request-transition-data request)
-         request         (-> (m/decode request-schema request mt/default-value-transformer)
-                             ;; retry-delay is a function (of how many retries have been
-                             ;; performed) or an int. Coerce it to be a function.
-                             (update :retry-delay
-                                     (fn [retry-delay]
-                                       (if (int? retry-delay)
-                                         (constantly retry-delay)
-                                         retry-delay)))
-                             ;; we are guaranteed to have :path or :on-success
-                             (update :on-success #(or % [::save-to-path (:path request)]))
-                             (update :http-xhrio assoc
-                                     :on-success [::sc.rf/transition ::success transition-data]
-                                     :on-failure [::sc.rf/transition ::error transition-data]))]
-     (f/dispatch [::sc.rf/initialize transition-data {:context {:request request}}]))))
+;; Helper for printing errors
+(f/reg-fx ::console (fn console-fx [args] (apply f/console args)))
 
 ;; Start a request, storing it and its state in the DB.
-(f/reg-event-fx ::start (fn [_ [_ request]] {::start request}))
+(f/reg-event-fx
+ ::start
+ (fn [_ [_ request]]
+   (if-let [errors (m/explain request-validation-schema request)]
+     {::console [:error "Invalid HTTP request" (str (me/humanize errors)) errors]}
+     (let [transition-data (request-transition-data request)
+           request         (-> (m/decode request-schema request mt/default-value-transformer)
+                               ;; retry-delay is a function (of how many retries have been
+                               ;; performed) or an int. Coerce it to be a function.
+                               (update :retry-delay
+                                       (fn [retry-delay]
+                                         (if (int? retry-delay)
+                                           (constantly retry-delay)
+                                           retry-delay)))
+                               ;; we are guaranteed to have :path or :on-success
+                               (update :on-success #(or % [::save-to-path (:path request)]))
+                               (update :http-xhrio assoc
+                                       :on-success [::sc.rf/transition ::success transition-data]
+                                       :on-failure [::sc.rf/transition ::error transition-data]))]
+       {:dispatch [::sc.rf/initialize transition-data {:context {:request request}}]}))))
 
 ;; Restart a request, which presumably finished either at [::error ::halted] or
 ;; [::loaded]. Note that the entire request isn't needed, only the `:id` and,
