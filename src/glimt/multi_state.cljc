@@ -8,10 +8,13 @@
             [statecharts.utils :as sc.utils]
             [statecharts.integrations.re-frame-multi :as sc.rf]))
 
+(def default-fsm-path [::fsm])
+
 (def request-schema-def
   [:map
-   [:fsm/id :keyword]
-   [:request/id vector?]
+   [:id [:or :keyword [:vector :any]]]
+   ;; vector is preferred, but sc.rf/register will convert a keyword to a vector
+   [:fsm-path {:default default-fsm-path} [:or :keyword [:vector :any]]]
    [:http-xhrio :map]
 
    [:max-retries {:default 0} :int]
@@ -41,27 +44,14 @@
                         with-on-success-schema
                         m/schema))
 (def request-validation-schema (-> request-schema-def
-                                   (mu/optional-keys [:max-retries :retry-delay])
+                                   (mu/optional-keys [:fsm-path :max-retries :retry-delay])
                                    with-on-success-schema
                                    m/schema))
 
-(def core-fsm-schema-def
-  [:map
-   [:state-path {:default [:>]}
-    [:vector :keyword]]])
-
-(def fsm-schema
-  (mu/merge
-   core-fsm-schema-def
-   [:map
-    [:id :keyword]]))
-
-(def fsm-validation-schema (mu/optional-keys fsm-schema [:state-path]))
-
 (def embedded-fsm-schema
-  (mu/merge
-   core-fsm-schema-def
+  (m/schema
    [:map
+    [:state-path [:vector :keyword]]
     [:failure-state {:optional true} [:vector :keyword]]
     [:success-state {:optional true} [:vector :keyword]]]))
 
@@ -71,9 +61,6 @@
     (throw (ex-info message
                     {:humanized (me/humanize errors)
                      :data      errors}))))
-
-(defn fsm? [fsm]
-  (m/validate fsm-validation-schema fsm))
 
 (defn allow-retries? [{:keys [request]} _event]
   (>= (:max-retries request) 1))
@@ -136,36 +123,20 @@
                                   ::halted   {}}}
              ::loaded  {}}})
 
-(defn fsm
-  "Create a machine as described by `config`. Will dispatch requests, retrying
-  on error if so configured, and store progress on the app-db. See `::state` for
-  details on fetching the progress."
-  [{:keys [id] :as config}]
-  (assoc (embedded-fsm config) :id id))
-
-(defn machine-path [fsm-id]
-  (vec (concat [::fsm] (sc.utils/ensure-vector fsm-id))))
+;; Register the default FSM. If a request doesn't include an `:fsm-path`, this
+;; FSM will be used.
+(let [machine (-> {:state-path [:>]}
+                  embedded-fsm
+                  (assoc :id ::fsm)
+                  sc/machine)]
+  (f/dispatch [::sc.rf/register default-fsm-path machine]))
 
 (defn request-state-path [request-id]
-  (vec (concat [::fsm-state] (sc.utils/ensure-vector request-id))))
+  (vec (concat [::requests] (sc.utils/ensure-vector request-id))))
 
-(defn expand-machine [config]
-  (assert-schema fsm-validation-schema config "Invalid HTTP FSM")
-  (-> (m/decode fsm-schema config mt/default-value-transformer)
-      fsm
-      sc/machine))
-
-;; Register an FSM. After being registered, the `fsm` can be used to `::start`
-;; requests.
-(f/reg-event-fx
- ::register
- (fn [_ [_ fsm]]
-   (let [machine (expand-machine fsm)]
-     {:dispatch [::sc.rf/register (machine-path (:id machine)) machine]})))
-
-(defn- request-transition-data [request]
-  {:fsm-path   (machine-path (:fsm/id request))
-   :state-path (request-state-path (:request/id request))})
+(defn- request-transition-data [{:keys [id fsm-path] :as request}]
+  {:fsm-path   (or fsm-path default-fsm-path)
+   :state-path (request-state-path id)})
 
 ;; Helper for requests that specify a `:path` instead of an `:on-success`.
 (f/reg-event-db ::save-to-path (fn [db [_ path data]] (assoc-in db path data)))
@@ -194,9 +165,9 @@
 (f/reg-event-fx ::start (fn [_ [_ request]] {::start request}))
 
 ;; Restart a request, which presumably finished either at [::error ::halted] or
-;; [::loaded]. Note that the entire request isn't needed, only the `:request/id`
-;; and `:fsm/id`. If you want to change any parameters of the request, dispatch
-;; `::start` instead.
+;; [::loaded]. Note that the entire request isn't needed, only the `:id` and,
+;; optionally, the `:fsm-path`. If you want to change any parameters of the
+;; request, dispatch `::start` instead.
 (f/reg-event-fx
  ::restart
  (fn [{:keys [db]} [_ request]]
