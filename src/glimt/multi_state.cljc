@@ -6,9 +6,10 @@
             [re-frame.core :as f]
             [statecharts.core :as sc]
             [statecharts.utils :as sc.utils]
-            [statecharts.integrations.re-frame-multi :as sc.rf]))
+            [mainej.statecharts.integrations.re-frame :as sc.rf]))
 
-(def default-fsm-path [::fsm])
+(def default-fsm-id ::fsm)
+(def default-fsm-path [default-fsm-id])
 
 (def request-schema-def
   [:map
@@ -114,20 +115,20 @@
                                                                                        :target ::waiting}
                                                                                       {:target  (or failure-state (vec (concat state-path [::error ::halted])))
                                                                                        :actions (dispatch-callback :on-failure)}]
-                                                                           ::success [{:target (or success-state (vec (concat state-path [::loaded])))
+                                                                           ::success [{:target  (or success-state (vec (concat state-path [::loaded])))
                                                                                        :actions dispatch-success}]}}}}
                                   ::halted   {}}}
              ::loaded  {}}})
 
 ;; Register the default FSM. If a request doesn't include an `:fsm-path`, this
 ;; FSM will be used.
-(let [machine (assoc (embedded-fsm {:state-path [:>]}) :id ::fsm)]
+(let [machine (assoc (embedded-fsm {:state-path [:>]}) :id default-fsm-id)]
   (f/dispatch [::sc.rf/register default-fsm-path (sc/machine machine)]))
 
 (defn request-state-path [request-id]
   (vec (concat [::requests] (sc.utils/ensure-vector request-id))))
 
-(defn- request-transition-data [{:keys [id fsm-path] :as request}]
+(defn- request-transition-data [{:keys [id fsm-path]}]
   {:fsm-path   (or fsm-path default-fsm-path)
    :state-path (request-state-path id)})
 
@@ -157,7 +158,8 @@
                                (update :http-xhrio assoc
                                        :on-success [::sc.rf/transition ::success transition-data]
                                        :on-failure [::sc.rf/transition ::error transition-data]))]
-       {:dispatch [::sc.rf/initialize transition-data {:context {:request request}}]}))))
+       {:dispatch [::sc.rf/initialize transition-data {:id      (:state-path transition-data)
+                                                       :context {:request request}}]}))))
 
 ;; Restart a request, which presumably finished either at [::error ::halted] or
 ;; [::loaded]. Note that the entire request isn't needed, only the `:id` and,
@@ -166,9 +168,11 @@
 (f/reg-event-fx
  ::restart
  (fn [{:keys [db]} [_ request]]
-   (let [transition-data (request-transition-data request)]
-     (when-let [existing-context (get-in db (:state-path transition-data))]
-       {:dispatch [::sc.rf/initialize transition-data {:context existing-context}]}))))
+   (let [transition-data (request-transition-data request)
+         state-path      (:state-path transition-data)]
+     (when-let [existing-context (get-in db state-path)]
+       {:dispatch [::sc.rf/initialize transition-data {:id      state-path
+                                                       :context existing-context}]}))))
 
 ;; Removes the request identified by `request-id` from the app db. Does not
 ;; attempt to halt an in-flight request, though any transitions for the request
@@ -179,11 +183,14 @@
    {:dispatch [::sc.rf/discard-state (request-state-path request-id)]}))
 
 ;; Get the progress of the request identified by `request-id`. Should be one of:
+;; [] ; <- not yet started
 ;; [::loading]
 ;; [::error ::retrying ::waiting]
 ;; [::error ::retrying ::loading]
 ;; [::error ::halted]
 ;; [::loaded]
+;; If part of an embedded machine, the state will be prepended by states defined
+;; in the parent machine.
 (f/reg-sub
  ::state
  (fn [db [_ request-id]]
