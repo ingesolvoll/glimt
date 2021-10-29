@@ -126,7 +126,7 @@
   (f/dispatch [::sc.rf/register default-fsm-path (sc/machine machine)]))
 
 (defn request-state-path [request-id]
-  (vec (concat [::requests] (sc.utils/ensure-vector request-id))))
+  (into [::requests] (sc.utils/ensure-vector request-id)))
 
 (defn- request-transition-data [{:keys [id fsm-path]}]
   {:fsm-path   (or fsm-path default-fsm-path)
@@ -135,15 +135,12 @@
 ;; Helper for requests that specify a `:path` instead of an `:on-success`.
 (f/reg-event-db ::save-to-path (fn [db [_ path data]] (assoc-in db path data)))
 
-;; Helper for printing errors
-(f/reg-fx ::console (fn console-fx [args] (apply f/console args)))
-
 ;; Start a request, storing it and its state in the DB.
 (f/reg-event-fx
  ::start
  (fn [_ [_ request]]
    (if-let [errors (m/explain request-validation-schema request)]
-     {::console [:error "Invalid HTTP request" (str (me/humanize errors)) errors]}
+     {::sc.rf/log [:error "Invalid HTTP request" (str (me/humanize errors)) errors]}
      (let [transition-data (request-transition-data request)
            request         (-> (m/decode request-schema request mt/default-value-transformer)
                                ;; retry-delay is a function (of how many retries have been
