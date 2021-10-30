@@ -155,8 +155,7 @@
                                (update :http-xhrio assoc
                                        :on-success [::sc.rf/transition ::success transition-data]
                                        :on-failure [::sc.rf/transition ::error transition-data]))]
-       {:dispatch [::sc.rf/initialize transition-data {:id      (:state-path transition-data)
-                                                       :context {:request request}}]}))))
+       {:dispatch [::sc.rf/initialize transition-data {:context {:request request}}]}))))
 
 ;; Restart a request, which presumably finished either at [::error ::halted] or
 ;; [::loaded]. Note that the entire request isn't needed, only the `:id` and,
@@ -165,11 +164,9 @@
 (f/reg-event-fx
  ::restart
  (fn [{:keys [db]} [_ request]]
-   (let [transition-data (request-transition-data request)
-         state-path      (:state-path transition-data)]
-     (when-let [existing-context (get-in db state-path)]
-       {:dispatch [::sc.rf/initialize transition-data {:id      state-path
-                                                       :context existing-context}]}))))
+   (let [transition-data (request-transition-data request)]
+     (when-let [existing-context (get-in db (:state-path transition-data))]
+       {:dispatch [::sc.rf/initialize transition-data {:context existing-context}]}))))
 
 ;; Removes the request identified by `request-id` from the app db. Does not
 ;; attempt to halt an in-flight request, though any transitions for the request
