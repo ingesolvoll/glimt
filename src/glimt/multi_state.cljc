@@ -120,10 +120,21 @@
                                   ::halted   {}}}
              ::loaded  {}}})
 
+;; Register a `machine`, saving it at `fsm-path`. This is merely a convenience
+;; alias for `::sc.rf/register`. It can be useful to avoid an extra require if
+;; you need to register a machine that has a glimt embedded machine within it.
+;; After a machine has been registered, start a request for it by dispatching
+;; `::http/start` with the `fsm-path` provided here as the request's
+;; `:fsm-path`.
+(f/reg-event-fx
+ ::register
+ (fn [_ [_ fsm-path machine]]
+   {:dispatch [::sc.rf/register fsm-path machine]}))
+
 ;; Register the default FSM. If a request doesn't include an `:fsm-path`, this
 ;; FSM will be used.
 (let [machine (assoc (embedded-fsm {:state-path [:>]}) :id default-fsm-id)]
-  (f/dispatch [::sc.rf/register default-fsm-path (sc/machine machine)]))
+  (f/dispatch [::register default-fsm-path (sc/machine machine)]))
 
 (defn request-state-path [request-id]
   (into [::requests] (sc.utils/ensure-vector request-id)))
