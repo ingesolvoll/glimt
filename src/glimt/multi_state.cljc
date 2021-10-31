@@ -1,12 +1,14 @@
 (ns glimt.multi-state
-  (:require [malli.core :as m]
-            [malli.error :as me]
-            [malli.transform :as mt]
-            [malli.util :as mu]
-            [re-frame.core :as f]
-            [statecharts.core :as sc]
-            [statecharts.utils :as sc.utils]
-            [mainej.statecharts.integrations.re-frame :as sc.rf]))
+  (:require
+   [day8.re-frame.http-fx]
+   [mainej.statecharts.integrations.re-frame :as sc.rf]
+   [malli.core :as m]
+   [malli.error :as me]
+   [malli.transform :as mt]
+   [malli.util :as mu]
+   [re-frame.core :as f]
+   [statecharts.core :as sc]
+   [statecharts.utils :as sc.utils]))
 
 (def default-fsm-id ::fsm)
 (def default-fsm-path [default-fsm-id])
