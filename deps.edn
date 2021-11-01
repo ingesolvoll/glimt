@@ -4,4 +4,4 @@
                    :ns-default build}}
  :deps    {re-frame/re-frame                          {:mvn/version "1.1.1"}
            day8.re-frame/http-fx                      {:mvn/version "v0.2.0"}
-           com.github.mainej/clj-statecharts-re-frame {:git/sha "dfe9359dffa0f9879fa9abd8fc5051a02d0d8f5d"}}}
+           com.github.mainej/clj-statecharts-re-frame {:git/sha "c9fcd5e82e720fd0722592df27cdc07555085250"}}}
