@@ -10,16 +10,13 @@
 (def core-map-schema
   [:map
    [:transition-event {:optional true} :any]
-   [:state-path {:optional true
-                 :default  [:>]}
+   [:state-path {:default [:>]}
     [:vector :keyword]]
    [:failure-state {:optional true} [:vector :keyword]]
    [:success-state {:optional true} [:vector :keyword]]
    [:id :keyword]
-   [:max-retries {:optional true
-                  :default  0} :int]
-   [:retry-delay {:optional true
-                  :default  2000}
+   [:max-retries {:default 0} :int]
+   [:retry-delay {:default 2000}
     [:or
      [:fn {:error/message "Should be a function of the number of retries"} fn?]
      :int]]
@@ -65,11 +62,7 @@
 (defn store-error [state event]
   (assoc state :error (:data event)))
 
-(defn embedded-fsm [{:keys [transition-event state-path max-retries retry-delay on-loading on-error on-failure failure-state success-state] :as config}]
-  (when-let [errors (m/explain embedded-config-schema config)]
-    (throw (ex-info "Invalid embedded HTTP FSM"
-                    {:humanized (me/humanize errors)
-                     :data      errors})))
+(defn fsm-body [{:keys [transition-event state-path max-retries retry-delay on-loading on-error on-failure failure-state success-state] :as config}]
   (let [retry-delay (if (fn? retry-delay)
                       (comp retry-delay :retries)
                       retry-delay)]
@@ -103,8 +96,16 @@
                                                            (f/dispatch (vec (concat on-failure [state event transition-event])))))}}}
                ::loaded  {}}}))
 
+(defn embedded-fsm [config]
+  (let [config-with-defaults (m/decode embedded-config-schema config mt/default-value-transformer)]
+    (when-let [errors (m/explain embedded-config-schema config-with-defaults)]
+      (throw (ex-info "Invalid embedded HTTP FSM"
+                      {:humanized (me/humanize errors)
+                       :data      errors})))
+    (fsm-body config-with-defaults)))
+
 (defn fsm [{:keys [id init-event transition-event] :as config}]
-  (merge (embedded-fsm config)
+  (merge (fsm-body config)
          {:id           id
           :integrations {:re-frame {:path             (f/path [::fsm-state id])
                                     :initialize-event init-event
@@ -146,19 +147,20 @@
 
 (f/reg-fx ::start
   (fn [{:keys [id] :as config}]
-    (when-let [errors (m/explain full-config-schema config)]
-      (throw (ex-info "Invalid HTTP FSM"
-                      {:humanized (me/humanize errors)
-                       :data      errors})))
-    (let [init-event       (ns-key id "init")
-          transition-event (ns-key id "transition")]
-      (-> {:init-event       init-event
-           :transition-event transition-event}
-          (merge (m/decode full-config-schema config mt/default-value-transformer))
-          fsm
-          sc/machine
-          sc.rf/integrate)
-      (f/dispatch [init-event]))))
+    (let [config-with-defaults (m/decode full-config-schema config mt/default-value-transformer)]
+      (when-let [errors (m/explain full-config-schema config-with-defaults)]
+        (throw (ex-info "Invalid HTTP FSM"
+                        {:humanized (me/humanize errors)
+                         :data      errors})))
+      (let [init-event       (ns-key id "init")
+            transition-event (ns-key id "transition")]
+        (-> {:init-event       init-event
+             :transition-event transition-event}
+            (merge config-with-defaults)
+            fsm
+            sc/machine
+            sc.rf/integrate)
+        (f/dispatch [init-event])))))
 
 (f/reg-event-fx ::restart
   (fn [_ [_ id]]
