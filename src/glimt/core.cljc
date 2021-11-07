@@ -167,6 +167,12 @@
     (let [init-event (ns-key id "init")]
       {:dispatch [init-event]})))
 
+(f/reg-event-db ::discard
+ ;; Removes the fsm identified by `id` from the app db. Does not attempt to halt
+ ;; any in-flight requests.
+ (fn [db [_ id]]
+   (update db ::fsm-state dissoc id)))
+
 (f/reg-event-fx ::start
   ;; Starts the interceptor for the given fsm.
   (fn [_ [_ fsm]]
