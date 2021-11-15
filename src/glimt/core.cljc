@@ -1,15 +1,15 @@
 (ns glimt.core
-  (:require [malli.core :as m]
-            [malli.error :as me]
-            [malli.transform :as mt]
-            [malli.util :as mu]
-            [re-frame.core :as f]
-            [statecharts.core :as sc]
-            [statecharts.integrations.re-frame :as sc.rf]))
+  (:require
+   [glimt.integration :as integration]
+   [malli.core :as m]
+   [malli.error :as me]
+   [malli.transform :as mt]
+   [malli.util :as mu]
+   [re-frame.core :as f]
+   [statecharts.core :as sc]))
 
 (def core-map-schema
   [:map
-   [:transition-event {:optional true} :any]
    [:state-path {:default [:>]}
     [:vector :keyword]]
    [:failure-state {:optional true} [:vector :keyword]]
@@ -38,7 +38,7 @@
    map-schema])
 
 (def embedded-config-schema (-> core-map-schema
-                                (mu/required-keys [:state-path :transition-event])
+                                (mu/required-keys [:state-path])
                                 (mu/dissoc :id)
                                 (config-schema)
                                 (m/schema)))
@@ -62,7 +62,7 @@
 (defn store-error [state event]
   (assoc state :error (:data event)))
 
-(defn fsm-body [{:keys [transition-event state-path max-retries retry-delay on-loading on-error on-failure failure-state success-state] :as config}]
+(defn fsm-body [{:keys [state-path max-retries retry-delay on-loading on-error on-failure failure-state success-state] :as config}]
   (let [retry-delay (if (fn? retry-delay)
                       (comp retry-delay :retries)
                       retry-delay)]
@@ -70,14 +70,14 @@
      :states  {::loading {:entry (fn [state event]
                                    (f/dispatch [::load config])
                                    (when on-loading
-                                     (f/dispatch (vec (concat on-loading [state event transition-event])))))
+                                     (f/dispatch (vec (concat on-loading [state event])))))
                           :on    {::error   ::error
                                   ::success (or success-state ::loaded)}}
                ::error   {:initial ::retrying
                           :entry   (fn [state event]
                                      (let [assign (sc/assign store-error)]
                                        (when on-error
-                                         (f/dispatch (vec (concat on-error [state event transition-event]))))
+                                         (f/dispatch (vec (concat on-error [state event]))))
                                        (assign state event)))
                           :states  {::retrying {:always  [{:guard  (fn [] (< max-retries 1))
                                                            :target (or failure-state ::halted)}]
@@ -93,7 +93,7 @@
                                                                               :target ::loading}]}}}
                                     ::halted   {:entry (fn [state event]
                                                          (when on-failure
-                                                           (f/dispatch (vec (concat on-failure [state event transition-event])))))}}}
+                                                           (f/dispatch (vec (concat on-failure [state event])))))}}}
                ::loaded  {}}}))
 
 (defn embedded-fsm [config]
@@ -104,74 +104,44 @@
                        :data      errors})))
     (fsm-body config-with-defaults)))
 
-(defn fsm [{:keys [id init-event transition-event] :as config}]
+(defn fsm [{:keys [id] :as config}]
   (merge (fsm-body config)
-         {:id           id
-          :integrations {:re-frame {:path             (f/path [::fsm-state id])
-                                    :initialize-event init-event
-                                    :transition-event transition-event}}}))
-
-(defn ns-key
-  "Returns a keyword generated from the `id`, with the `v` appended.
-
-  Preserves the namespace of the `id`, if any.
-
-  Useful for generating synthetic event names, scoped to a single FSM.
-
-  ```clojure
-  (ns-key :my-fsm \"init\")
-  ;; => :my-fsm.init
-  (ns-key :my-ns/my-fsm \"init\")
-  ;; => :my-ns/my-fsm.init
-  ```"
-  [id v]
-  (keyword (namespace id) (str (name id) "." v)))
+         {:id id}))
 
 (f/reg-event-fx ::on-failure
-                (fn [_ [_ transition-event error]]
-                  {:dispatch [transition-event ::error error]}))
+  (fn [_ [_ {:keys [id]} error]]
+    {:dispatch [:transition-fsm id ::error error]}))
 
 (f/reg-event-fx ::on-success
-                (fn [{db :db} [_ {:keys [transition-event on-success path]} data]]
-                  (merge
-                   (when path
-                     {:db (assoc-in db path data)})
-                   {:dispatch-n [[transition-event ::success]
-                                 (when on-success (conj on-success data))]})))
+  (fn [{db :db} [_ {:keys [id on-success path]} data]]
+    (merge
+     (when path
+       {:db (assoc-in db path data)})
+     {:dispatch-n [[:transition-fsm id ::success]
+                   (when on-success (conj on-success data))]})))
 
 (f/reg-event-fx ::load
-  (fn [_ [_ {:keys [transition-event http-xhrio] :as config}]]
+  (fn [_ [_ {:keys [http-xhrio] :as config}]]
     {:http-xhrio (merge http-xhrio
-                        {:on-failure [::on-failure transition-event]
+                        {:on-failure [::on-failure config]
                          :on-success [::on-success config]})}))
 
 (f/reg-fx ::start
-  (fn [{:keys [id] :as config}]
+  (fn [config]
     (let [config-with-defaults (m/decode full-config-schema config mt/default-value-transformer)]
       (when-let [errors (m/explain full-config-schema config-with-defaults)]
         (throw (ex-info "Invalid HTTP FSM"
                         {:humanized (me/humanize errors)
                          :data      errors})))
-      (let [init-event       (ns-key id "init")
-            transition-event (ns-key id "transition")]
-        (-> {:init-event       init-event
-             :transition-event transition-event}
-            (merge config-with-defaults)
-            fsm
-            sc/machine
-            sc.rf/integrate)
-        (f/dispatch [init-event])))))
-
-(f/reg-event-fx ::restart
-  (fn [_ [_ id]]
-    (let [init-event (ns-key id "init")]
-      {:dispatch [init-event]})))
+      (-> (fsm config-with-defaults)
+          sc/machine
+          integration/integrate))))
 
 (f/reg-event-db ::discard
- ;; Removes the fsm identified by `id` from the app db. Does not attempt to halt
- ;; any in-flight requests.
- (fn [db [_ id]]
-   (update db ::fsm-state dissoc id)))
+  ;; Removes the fsm identified by `id` from the app db. Does not attempt to halt
+  ;; any in-flight requests.
+  (fn [db [_ id]]
+    (update db :fsm dissoc id)))
 
 (f/reg-event-fx ::start
   ;; Starts the interceptor for the given fsm.
@@ -183,10 +153,23 @@
     x
     [x]))
 
+(f/reg-fx ::stop
+  (fn [id]
+    (f/clear-global-interceptor id)))
+
+(f/reg-event-fx ::start
+  (fn [_ [_ fsm]]
+    {::start fsm}))
+
+(f/reg-event-fx ::stop
+  (fn [{db :db} [_ id]]
+    {:db (update db :fsm dissoc id)}))
+
+
 (f/reg-sub ::state
   (fn [db [_ id]]
-    (->seq (get-in db [::fsm-state id :_state]))))
+    (->seq (get-in db [:fsm id :_state]))))
 
 (f/reg-sub ::state-full
   (fn [db [_ id]]
-    (get-in db [::fsm-state id])))
+    (get-in db [:fsm id])))
