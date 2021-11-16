@@ -1,11 +1,11 @@
 (ns glimt.core
   (:require
-   [glimt.integration :as integration]
    [malli.core :as m]
    [malli.error :as me]
    [malli.transform :as mt]
    [malli.util :as mu]
    [re-frame.core :as f]
+   [re-statecharts.core :as rs]
    [statecharts.core :as sc]))
 
 (def core-map-schema
@@ -135,41 +135,9 @@
                          :data      errors})))
       (-> (fsm config-with-defaults)
           sc/machine
-          integration/integrate))))
-
-(f/reg-event-db ::discard
-  ;; Removes the fsm identified by `id` from the app db. Does not attempt to halt
-  ;; any in-flight requests.
-  (fn [db [_ id]]
-    (update db :fsm dissoc id)))
+          rs/integrate))))
 
 (f/reg-event-fx ::start
   ;; Starts the interceptor for the given fsm.
   (fn [_ [_ fsm]]
     {::start fsm}))
-
-(defn ->seq [x]
-  (if (coll? x)
-    x
-    [x]))
-
-(f/reg-fx ::stop
-  (fn [id]
-    (f/clear-global-interceptor id)))
-
-(f/reg-event-fx ::start
-  (fn [_ [_ fsm]]
-    {::start fsm}))
-
-(f/reg-event-fx ::stop
-  (fn [{db :db} [_ id]]
-    {:db (update db :fsm dissoc id)}))
-
-
-(f/reg-sub ::state
-  (fn [db [_ id]]
-    (->seq (get-in db [:fsm id :_state]))))
-
-(f/reg-sub ::state-full
-  (fn [db [_ id]]
-    (get-in db [:fsm id])))
