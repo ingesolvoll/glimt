@@ -4,7 +4,7 @@ executors:
   tools-executor:
     working_directory: ~/glimt
     docker:
-      - image: circleci/clojure:openjdk-11-tools-deps-1.10.3.822-node-browsers
+      - image: circleci/clojure:openjdk-11-tools-deps-1.10.3.1020-node-browsers
 
 jobs:
   build:
