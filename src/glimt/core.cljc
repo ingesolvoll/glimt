@@ -126,18 +126,12 @@
                         {:on-failure [::on-failure config]
                          :on-success [::on-success config]})}))
 
-(f/reg-fx ::start
-  (fn [config]
+(f/reg-event-fx ::start
+  ;; Starts the interceptor for the given fsm.
+  (fn [_ [_ config]]
     (let [config-with-defaults (m/decode full-config-schema config mt/default-value-transformer)]
       (when-let [errors (m/explain full-config-schema config-with-defaults)]
         (throw (ex-info "Invalid HTTP FSM"
                         {:humanized (me/humanize errors)
                          :data      errors})))
-      (-> (fsm config-with-defaults)
-          sc/machine
-          rs/integrate))))
-
-(f/reg-event-fx ::start
-  ;; Starts the interceptor for the given fsm.
-  (fn [_ [_ fsm]]
-    {::start fsm}))
+      {::rs/start (fsm config-with-defaults)})))
