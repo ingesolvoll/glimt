@@ -1,22 +1,38 @@
 (ns build
-  (:require [clojure.tools.build.api :as b]
-            [org.corfield.build :as bb]))
+  (:require
+   [clojure.string :as str]
+   [clojure.tools.build.api :as b]
+   [org.corfield.build :as bb]))
 
 (def lib 'glimt/glimt)
 ;; if you want a version of MAJOR.MINOR.COMMITS:
 (def version "0.2.1")
 
-(defn jar [opts]
-      (-> opts
-          (assoc :lib lib :version version)
-          (bb/jar)))
-
 (defn install [opts]
-      (-> opts
-          jar
-          (bb/install)))
+  (-> opts
+      (assoc :lib lib :version version)
+      (bb/jar)
+      (bb/install)))
 
-(defn deploy [opts]
-      (-> opts
-          jar
-          (bb/deploy)))
+(def release-marker "Release-")
+
+(defn extract-version [tag]
+  (str/replace-first tag release-marker ""))
+
+(defn maybe-deploy [opts]
+  (if-let [tag (System/getenv "CIRCLE_TAG")]
+    (do
+      (println "Found tag " tag)
+      (if (re-find (re-pattern release-marker) tag)
+        (do
+          (println "Releasing to clojars...")
+          (-> opts
+              (assoc :lib lib :version (extract-version tag))
+              (bb/jar)
+              (bb/deploy)))
+        (do
+          (println "Tag is not a release tag, skipping deploy")
+          opts)))
+    (do
+      (println "No tag found, skipping deploy")
+      opts)))

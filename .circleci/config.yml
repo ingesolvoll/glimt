@@ -29,7 +29,7 @@ jobs:
           keys:
           - glimt-deps-{{ checksum "deps.edn" }}
           - glimt-deps-
-      - run: clojure -T:build deploy
+      - run: clojure -T:build maybe-deploy
       - save_cache:
           paths:
             - ~/.m2
@@ -38,14 +38,7 @@ jobs:
 workflows:
   build-deploy:
     jobs:
-      - build:
-          filters:
-            tags:
-              only: /.*/
-
       - deploy:
-          requires:
-            - build
           filters:
             tags:
               only: /Release-.*/
