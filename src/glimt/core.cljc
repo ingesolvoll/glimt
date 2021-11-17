@@ -110,14 +110,14 @@
 
 (f/reg-event-fx ::on-failure
   (fn [_ [_ {:keys [id]} error]]
-    {:dispatch [:transition-fsm id ::error error]}))
+    {:dispatch [::rs/transition id ::error error]}))
 
 (f/reg-event-fx ::on-success
   (fn [{db :db} [_ {:keys [id on-success path]} data]]
     (merge
      (when path
        {:db (assoc-in db path data)})
-     {:dispatch-n [[:transition-fsm id ::success]
+     {:dispatch-n [[::rs/transition id ::success]
                    (when on-success (conj on-success data))]})))
 
 (f/reg-event-fx ::load
@@ -135,3 +135,13 @@
                         {:humanized (me/humanize errors)
                          :data      errors})))
       {::rs/start (fsm config-with-defaults)})))
+
+(defn ->seq [x]
+  (if (coll? x)
+    x
+    [x]))
+
+(f/reg-sub ::state
+  (fn [[_ id]]
+    (f/subscribe [::rs/state id]))
+  ->seq)
