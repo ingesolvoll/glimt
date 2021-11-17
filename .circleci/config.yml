@@ -1,0 +1,53 @@
+version: 2.1
+
+executors:
+  tools-executor:
+    working_directory: ~/glimt
+    docker:
+      - image: circleci/clojure:openjdk-11-tools-deps-1.10.3.822-node-browsers
+
+jobs:
+  build:
+    executor: tools-executor
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+          - glimt-deps-{{ checksum "deps.edn" }}
+          - glimt-deps-
+      - run: clojure -T:build jar
+      - save_cache:
+          paths:
+            - ~/.m2
+          key:  glimt-deps-{{ checksum "deps.edn" }}
+
+  deploy:
+    executor: tools-executor
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+          - glimt-deps-{{ checksum "deps.edn" }}
+          - glimt-deps-
+      - run: clojure -T:build deploy
+      - save_cache:
+          paths:
+            - ~/.m2
+            key:  glimt-deps-{{ checksum "deps.edn" }}
+
+workflows:
+  build-deploy:
+    jobs:
+      - build:
+          filters:
+            tags:
+              only: /.*/
+
+      - deploy:
+          requires:
+            - build
+          filters:
+            tags:
+              only: /Release-.*/
+          context:
+            - CLOJARS_DEPLOY
