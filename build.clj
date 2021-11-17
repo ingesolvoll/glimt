@@ -6,14 +6,17 @@
 ;; if you want a version of MAJOR.MINOR.COMMITS:
 (def version "0.2.1")
 
-(defn install [opts]
+(defn jar [opts]
       (-> opts
           (assoc :lib lib :version version)
-          (bb/jar)
+          (bb/jar)))
+
+(defn install [opts]
+      (-> opts
+          jar
           (bb/install)))
 
 (defn deploy [opts]
       (-> opts
-          (assoc :lib lib :version version)
-          (bb/jar)
+          jar
           (bb/deploy)))
