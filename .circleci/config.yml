@@ -33,7 +33,7 @@ jobs:
       - save_cache:
           paths:
             - ~/.m2
-            key:  glimt-deps-{{ checksum "deps.edn" }}
+          key:  glimt-deps-{{ checksum "deps.edn" }}
 
 workflows:
   build-deploy:
