@@ -6,4 +6,4 @@
            day8.re-frame/http-fx                 {:mvn/version "v0.2.0"}
            clj-statecharts/clj-statecharts       {:mvn/version "0.1.1"}
            metosin/malli                         {:mvn/version "0.6.2"}
-           com.github.ingesolvoll/re-statecharts {:mvn/version "0.0.3"}}}
+           com.github.ingesolvoll/re-statecharts {:mvn/version "0.1.1"}}}

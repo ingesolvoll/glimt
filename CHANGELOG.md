@@ -4,6 +4,12 @@
 
 ## Changed
 
+# 0.2.3 (2021-11-19)
+
+## Fixed
+- README updated to better reflect current state
+- re-statecharts 0.1.1
+
 # 0.2.2 (2021-11-17)
 
 ## Changed
