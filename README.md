@@ -15,6 +15,7 @@ Still early, expecting minor bugs and possibly some breaking APIs in the short t
 ```clojure
 (require '[re-frame.core :as rf])
 (require '[glimt.core :as http])
+(require '[re-statecharts.core :as rs])
 
 ;; First we shape our HTTP request the way we want it.
 (def fsm {:id          :customer-loader
@@ -55,7 +56,7 @@ Still early, expecting minor bugs and possibly some breaking APIs in the short t
 ;;              :response        nil}]}
 
 ;; At your leisure, remove FSM from app db
-(rf/dispatch [::http/discard :customer-loader])
+(rf/dispatch [::rs/stop :customer-loader])
 
 @state
 ;; => nil
@@ -65,7 +66,7 @@ Still early, expecting minor bugs and possibly some breaking APIs in the short t
 
 **Everything is optional, unless specified otherwise.**
 
-`:id` **Required** The globally unique keyword identifying this FSM
+`:id` **Required** The globally unique identifier for this FSM. Can be any type.
 
 `:http-xhrio` **Required** Request map as defined by https://github.com/day8/re-frame-http-fx
 
@@ -100,7 +101,7 @@ Or by returning an effect from an event handler, like this:
 
 FSM state is exposed through re-frame subscriptions:
 
-```
+```clojure
 (rf/subscribe [::http/state fsm-id]) 
      => [::http/loading]
 ```
@@ -115,14 +116,12 @@ You can also embed an HTTP FSM inside another FSM. Like this:
 
 ```clojure
 {:id               :polling-fsm
- :transition-event :transition-my-fsm
  :initial          ::running
  :states           {::running {:initial ::loading
                                :states  {::waiting {:after [{:delay  10000
                                                              :target ::loading}]}
                                          ::loading (http/embedded-fsm
-                                                    {:transition-event :transition-my-fsm
-                                                     :http-xhrio       "url"
+                                                    {:http-xhrio       "url"
                                                      :path             [:store :data :here]
                                                      :state-path       [:> ::running ::loading]
                                                      :success-state    [:> ::running ::waiting]})}}}}
@@ -130,26 +129,25 @@ You can also embed an HTTP FSM inside another FSM. Like this:
 
 In this context, we get a few more settings that need to be considered.
 
-`:transition-event`: **Required** The embedded machine needs access to the transition event of the container.
+`:state-path`:
 
-`:state-path`: **Required** The path within the containing FSM where this embedded one resides. Needed for computing
-state transitions relative to the embedded machine.
+**Required** The path within the containing FSM where this embedded one resides. Needed for computing state transitions 
+relative to the embedded machine. Also, we may want to transition to some arbitrary state when the HTTP FSM fails or succeeds.
 
-Also, we may want to transition to some arbitrary state when the HTTP FSM fails or succeeds:
+`:success-state`: 
 
-`:success-state`: Transition to this state when request succeeds
+Transition to this state when request succeeds
 
-`:failure-state`: Transition to this state when request fails.
+`:failure-state`: 
+
+Transition to this state when request fails.
 
 
 # Events for entering states
 `:on-loading`, `:on-error` and `:on-failure` are optional events that are called when entering the corresponding
 states. Used for cases where you need to trigger additional side effects or store some state.
 
-The full event vector dispatched is `[:on-loading state event transition-event]`, where `transition-event`
-is the event that can be used for transitioning the FSM. This is rarely needed, but is included as a convenience.
-
-Usage of `transition-event`: `(f/dispatch [transition-event :glimt.core/error])`
+The full event vector dispatched is `[:on-loading state event]`
  
 # How to structure your views
 
